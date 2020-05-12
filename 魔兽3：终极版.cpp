@@ -154,6 +154,9 @@ public:
     friend class Iceman;
     friend class Lion;
     friend class Wolf;
+    friend class Sword;
+    friend class Bomb;
+    friend class Arrow;
     ~Solider(){
         for_each(arms.begin(),arms.end(),deleter());//清空武器库
     }
@@ -311,21 +314,6 @@ private:
 
 
 /////////////////////////////成员函数////////////////////////////////////
-
-void Sword::used(){
-    damage=damage*4/5;//磨损
-    if(damage==0)available=false;
-}
-void Arrow::used(){
-    usage++;
-    if(usage==3)available=false;//使用次数耗尽
-}
-void Bomb::used(){
-    available=false;//炸弹爆炸
-}
-
-
-
 
 void Solider::armed(Arm kind){
     switch(kind){
@@ -631,15 +619,43 @@ void Lion::escape(){
     }
 }
 void Wolf::catch_weapon(Solider* object){
-    if(arms.empty()){
-        for(auto arm:object->arms){
-            arms.push_back(arm);//缴获武器
+    for(auto oarm:object->arms){
+        bool want=true;//是否拾取
+        for(auto arm:arms){
+            if(arm->kind==oarm->kind)want=false;
         }
+        if(want)arms.push_back(oarm);
     }
 }
 
 
 //////////////////////////////////多态////////////////////////////////////
+
+void Sword::used(){
+    damage=damage*4/5;//磨损
+    if(damage==0){
+        available=false;
+        for(auto iter=holder->arms.begin();iter!=holder->arms.end();iter++){
+            if((*iter)==this)holder->arms.erase(iter);
+        }    
+    }
+}
+void Arrow::used(){
+    usage++;
+    if(usage==3){
+        available=false;//使用次数耗尽
+        for(auto iter=holder->arms.begin();iter!=holder->arms.end();iter++){
+            if((*iter)==this)holder->arms.erase(iter);
+        }
+    }
+}
+void Bomb::used(){
+    available=false;//炸弹爆炸
+    for(auto iter=holder->arms.begin();iter!=holder->arms.end();iter++){
+        if((*iter)==this)holder->arms.erase(iter);
+    }
+}
+
 void Dragon::born(){
     armed((Arm)(id%3));
     morale=(double)camp->life_element/(double)healthmap[kind];//计算士气
@@ -1039,6 +1055,17 @@ void Shoot(){
     }
 }
 
+void Explode(){
+    for(City* city:Map){
+        if(city->get_ID()!=0&&city->get_ID()!=N_cities+1){
+            for(auto s:city->get_solider()){
+                s->explode();
+            }
+        }
+    }
+
+}
+
 void Attack(){
     for(City* city:Map){
         if(city->get_ID()!=0&&city->get_ID()!=N_cities+1){
@@ -1049,6 +1076,23 @@ void Attack(){
                         if(s1->get_color()!=s->get_color()&&!s1->isfirsthand())s->attack(s1);
                     }
                 }
+            }
+        }
+    }
+}
+
+void Report_weapon(){
+    for(City* city:Map){
+        if(city->get_ID()!=0&&city->get_ID()!=N_cities+1){
+            for(auto s:city->get_solider()){
+                if(s->get_color()==red)s->report_weapon();
+            }
+        }
+    }
+    for(City* city:Map){
+        if(city->get_ID()!=0&&city->get_ID()!=N_cities+1){
+            for(auto s:city->get_solider()){
+                if(s->get_color()==blue)s->report_weapon();
             }
         }
     }
@@ -1080,43 +1124,34 @@ void start(int T){
     for(int hour=0;;hour++){
         for(int tic=0;tic<10;tic++){
             int min=minute[tic];
+            if(hour*60+min>=T)GAMEOVER=true;
             TIME.first=hour;
             TIME.second=min;//更新时间
             if(min==0){//司令部创造武士
                 RED.create_next();
                 BLUE.create_next();
             }
-            else if(min==5){//lion逃跑
-                Escape();
-            }
+            else if(min==5)Escape();
             else if(min==10){//武士进军
                 RED.march_next();
                 BLUE.march_next();
+                RED.check_state();
+                BLUE.check_state();
+                if(RED.isconquered()||BLUE.isconquered())GAMEOVER=true;
             }
-            else if(min==20){
-                Generate();
-            }
-            else if(min==30){
-                Shoot();
-            }
-            else if(min==35){
-                
-            }
-            else if(min==38){
-
-            }
-            else if(min==40){
-
-
-            }
+            else if(min==20)Generate();
+            else if(min==30)Earn_elem();
+            else if(min==35)Shoot();
+            else if(min==38)Explode();
+            else if(min==40)Attack();
             else if(min==50){
-
+                RED.report_life();
+                BLUE.report_life();
             }
-            else if(min==55){
-
-            }
+            else if(min==55)Report_weapon();
+            if(GAMEOVER)break;
         }
-       
+        if(GAMEOVER)break;
     }
     for_each(Map.begin(),Map.end(),deleter());//清理内存
 }
