@@ -12,14 +12,19 @@ struct deleter {
 };
 
 ////////////////////////////////全局变量////////////////////////////////
-
+//声明
+class City;
+class Armament;
+class Solider;
+class Headquarters;
+//
 
 
 ///////////游戏基本信息///////////
 enum Color {red=0,blue=1 };//颜色阵营枚举
 enum Kind {dragon=0,ninja=1,iceman=2,lion=3,wolf=4};//武士种类枚举
 enum Arm {sword=0,bomb=1,arrow=2};//武器种类枚举
-enum State{none=0,win=1,draw=2,loss=3,run=4,killed_by_arrow=5,kill_with_arrow=6};//回合内战斗状态枚举
+enum State{none=0,win=1,draw=2,loss=3,run=4,killed_by_arrow=5,kill_with_arrow=6,killed_by_bomb=7,easy_win=8/*easy_win指当前城市的敌人被友军弓箭射死*/};//回合内战斗状态枚举
 enum Flag {nothing=0,redflag=1,blueflag=2};//旗帜状态
 
 pair<int,int>TIME;//记录全局时间（小时，分钟）
@@ -60,12 +65,7 @@ bool bluestop=false;
 
 
 
-//声明
-class City;
-class Armament;
-class Solider;
-class Headquarters;
-//
+
 
 ///////////////////////////////设计武器//////////////////////////////////
 class Armament{
@@ -81,10 +81,11 @@ public:
     //////////////////////////////
     virtual void used()=0;//使用武器时调用
 protected:
-    Armament(Solider* sol,int d=0):holder(sol),damage(d),available(true){}
+    Armament(Solider* sol,int d=0):holder(sol),damage(d),available(true),usage(0){}
     Armament(Armament& a){}
     Arm kind;
     int damage;
+    int usage;//使用次数
     bool available;//武器是否可用
     Solider* holder;//武器持有者指针
     
@@ -106,14 +107,91 @@ public:
 };
 class Arrow:public Armament{
 public:
-    Arrow(Solider* sol,int d=0):Armament(sol,d),usage(0){kind=arrow;}
+    Arrow(Solider* sol,int d=0):Armament(sol,d){kind=arrow;}
     Arrow(Arrow& s):Armament(s){kind=s.kind;}
     void used();
 private:
-    int usage;//使用次数
 };
 
 ////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+///////////////////////////设计城市与司令部////////////////////////////////
+
+class City{
+public:
+    City(int _id,int l=0):ID(_id),life_element(l),number_of_soliders(0),flag(nothing),last_two_wins(nothing,nothing),temp_life_elem(0){}
+    int get_ID()const { return ID;}
+    int get_life()const{return life_element;}
+    void generate_elem(){life_element+=10;}//产生生命元
+    void set_attack_order();//设置攻击次序
+    void change_wins(int c);//更改胜利情况
+    void set_flags();//设置旗帜状况
+    void reset();//重置城市
+    vector<Solider*> get_solider(){return soliders;}
+    //////对五种武士开放信息许可//////
+    friend class Solider;
+    friend class Dragon;
+    friend class Ninja;
+    friend class Iceman;
+    friend class Lion;
+    friend class Wolf;
+    //////////////////////////////
+protected:
+    int ID;//城市编号
+    Flag flag;//城市中的旗帜
+    int life_element;//生命元
+    int temp_life_elem;//生命元暂存
+    int number_of_soliders;//武士总数
+    vector<Solider*>soliders;//保存基类指针，存储当前城市的武士实时情况
+    pair<Flag,Flag>last_two_wins;//记录前两次胜利情况
+};
+
+
+
+class Headquarters:public City{
+    //司令部类
+public:
+    Headquarters(Color col,int l,int _id):City(_id,l),color(col),producing(true),number_of_soliders_ever(0),conquered(false){
+        memset(countmap,0,sizeof(countmap));
+        if(life_element<create_chain[color][0])producing=false;
+    }
+    ~Headquarters(){
+        for_each(soliders_ever_created.begin(),soliders_ever_created.end(),deleter());//清除所有武士
+    }
+    //公有接口
+    int get_number()const{return number_of_soliders;}
+    Color get_color()const {return color;}
+    bool isproducing()const{return producing;}
+    bool isconquered()const{return conquered;}
+    void create(Kind k);//产生特定种类的武士
+    void create_next();//产生下一个武士
+    void march_next();//驱动武士进军
+    void check_state();//查看是否被占领
+    void report_life();//报告生命元情况
+    void award();//奖励武士
+
+    //////对五种武士开放信息许可/////
+    friend class Solider;
+    friend class Dragon;
+    friend class Ninja;
+    friend class Iceman;
+    friend class Lion;
+    friend class Wolf;
+    //////////////////////////////
+
+private:
+    Color color;//保存阵营
+    int countmap[5];//保存各种武士的数量
+    bool producing;//是否正常运转
+    int number_of_soliders_ever;//该司令部创造的所有武士数量
+    bool conquered;//司令部是否被占领
+    vector<Solider*>soliders_ever_created;//该司令部创造的所有武士
+};
+/////////////////////////////////////////////////////////////////////////
 
 
 ////////////////////////////////设计武士/////////////////////////////////
@@ -135,16 +213,19 @@ public:
     virtual void march_on();//前进(利用多态处理iceman的特殊情况)
     virtual void attack(Solider* object);//攻击(利用多态处理dragon的攻击)
     virtual void fight_back(Solider* object);//反击(利用多态处理ninja的反击)
-    void reset(){}//回合结束，状态重置
+    void reset();//回合结束，状态重置
     void earn_life();//获取城市中的生命元
     void shoot();//射箭
     void explode();//释放炸弹
     void report_weapon();//报告武器信息
     void throw_weapon();//武士丢弃武器
-    virtual void escape();
-    virtual void yell();
+    virtual void escape(){}
+    virtual void yell(){}
+    virtual void catch_weapon(Solider* object){}//缴获武器
     bool isfirsthand(){return first_hand;}
+    bool Action(){return action;}
     Color get_color(){return color;}
+    State get_state(){return state;}
 
 
     friend class City;
@@ -162,16 +243,17 @@ public:
     }
 protected:
     //受保护的构造函数，无法直接调用，防止基类对象实例化
-    Solider(int _id,int _health,int _damage,Headquarters* h):id(_id),health(_health),damage(_damage),camp(h),wins(0),state(none),first_hand(false),color(h->color){position=camp;}
+    Solider(int _id,int _health,int _damage,Headquarters* h):id(_id),health(_health),damage(_damage),camp(h),wins(0),state(none),first_hand(false),color(h->color),action(false){position=camp;}
     Solider(const Solider& s):id(s.id),health(s.health),damage(s.damage){}
     int id;//编号
     int wins;//胜利次数
+    Color color;
+    Kind kind;//种类
+    State state;//本回合战斗状态（战后统计）
     int health;//生命值
     int damage;//攻击力
     bool first_hand;//是否先手攻击
-    Color color;
-    State state;//本回合战斗状态（战后统计）
-    Kind kind;//种类
+    bool action;//是否已经进军
     vector<Armament*>arms;//武器库
     Headquarters* camp;//表示所属司令部
     City* position;//表示所在位置
@@ -198,7 +280,7 @@ public:
     Ninja(int _id,int _health,int _damage,Headquarters* h):Solider(_id,_health,_damage,h){kind=ninja;}
     Ninja(const Ninja& d):Solider(d){kind=d.kind;}
     void born();
-    void fight_back(){}//ninja受击时不反击
+    void fight_back(Solider* object){}//ninja受击时不反击
 private:
 };
 
@@ -236,83 +318,6 @@ private:
 };
 /////////////////////////////////////////////////////////////////////////
 
-
-///////////////////////////设计城市与司令部////////////////////////////////
-
-class City{
-public:
-    City(int _id,int l=0):ID(_id),life_element(l),number_of_soliders(0),flag(nothing),last_two_wins(nothing,nothing){}
-    ~City(){
-        for_each(soliders.begin(),soliders.end(),deleter());//清空城市
-    }
-    int get_ID()const { return ID;}
-    int get_life()const{return life_element;}
-    void generate_elem(){life_element+=10;}//产生生命元
-    void set_attack_order();//设置攻击次序
-    void change_wins(Color c);//更改胜利情况
-    void set_flags();//设置旗帜状况
-    void reset();//重置城市
-    vector<Solider*> get_solider(){return soliders;}
-    //////对五种武士开放信息许可//////
-    friend class Solider;
-    friend class Dragon;
-    friend class Ninja;
-    friend class Iceman;
-    friend class Lion;
-    friend class Wolf;
-    //////////////////////////////
-protected:
-    int ID;//城市编号
-    Flag flag;//城市中的旗帜
-    int life_element;//生命元
-    int number_of_soliders;//武士总数
-    vector<Solider*>soliders;//保存基类指针，存储当前城市的武士实时情况
-    pair<Flag,Flag>last_two_wins;//记录前两次胜利情况
-};
-
-
-
-class Headquarters:public City{
-    //司令部类
-public:
-    Headquarters(Color col,int l,int _id):City(_id,l),color(col),producing(true),number_of_soliders_ever(0),conquered(false){
-        memset(countmap,0,sizeof(countmap));
-        if(life_element<create_chain[color][0])producing=false;
-    }
-    ~Headquarters(){
-        for_each(soliders_ever_created.begin(),soliders_ever_created.end(),deleter());//清除所有武士
-    }
-    //公有接口
-    int get_number()const{return number_of_soliders;}
-    Color get_color()const {return color;}
-    bool isproducing()const{return producing;}
-    bool isconquered()const{return conquered;}
-    void create(Kind k);//产生特定种类的武士
-    void create_next();//产生下一个武士
-    void march_next();//驱动武士进军
-    void check_state();//查看是否被占领
-    void report_life();//报告生命元情况
-
-    //////对五种武士开放信息许可/////
-    friend class Solider;
-    friend class Dragon;
-    friend class Ninja;
-    friend class Iceman;
-    friend class Lion;
-    friend class Wolf;
-    //////////////////////////////
-
-private:
-    Color color;//保存阵营
-    int countmap[5];//保存各种武士的数量
-    bool producing;//是否正常运转
-    int number_of_soliders_ever;//该司令部创造的所有武士数量
-    bool conquered;//司令部是否被占领
-    vector<Solider*>soliders_ever_created;//该司令部创造的所有武士
-};
-/////////////////////////////////////////////////////////////////////////
-
-
 /////////////////////////////成员函数////////////////////////////////////
 
 void Solider::armed(Arm kind){
@@ -332,13 +337,17 @@ void Solider::armed(Arm kind){
 
 
 void Solider::death(){
-    if(state!=killed_by_arrow){
+    if(state!=killed_by_arrow&&state!=killed_by_bomb){
         cout<<setfill('0')<<setw(3)<<TIME.first<<":";
         cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
-        cout<<color<<" "<<kindstr[kind]<<" "<<id<<" was killed in city "<<position->ID<<endl;
+        cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" was killed in city "<<position->ID<<endl;
     }
     for(auto it =position->soliders.begin();it!=position->soliders.end();it++){
-        if(*it==this)position->soliders.erase(it);break;//解除绑定
+        if((*it)==this){
+            position->soliders.erase(it);
+            position->number_of_soliders--;
+            break;//解除绑定
+        }
     }
     position=NULL;
 }
@@ -347,14 +356,17 @@ void Solider::death(){
 
 void Solider::catch_award(){
     if(camp->life_element>=8){
-        health+=8;
-        camp->life_element-=8;
+        if(state==win||state==easy_win){
+            health+=8;
+            camp->life_element-=8;
+        }
     }
 }
 
 void Solider::reset(){
     state=none;
     first_hand=false;
+    action=false;
 }
 
 void Solider::march_on(){
@@ -362,19 +374,20 @@ void Solider::march_on(){
         if(position->ID!=N_cities+1){
             position->number_of_soliders--;
             for(auto it =position->soliders.begin();it!=position->soliders.end();it++){
-                if(*it==this)position->soliders.erase(it);break;//解除绑定
+                if((*it)==this){position->soliders.erase(it);break;}//解除绑定
             }
             position=Map[position->ID+1];//进入下一个城市
             position->soliders.push_back(this);//重新绑定
             position->number_of_soliders++;
+            action=true;
             cout<<setfill('0')<<setw(3)<<TIME.first<<":";
             cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
             if(position->ID!=N_cities+1){
-                cout<<color<<" "<<kind<<" "<<id<<" "<<"marched to city "<<position->ID<<" with ";
+                cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" "<<"marched to city "<<position->ID<<" with ";
                 cout<<health<<" elements and force "<<damage<<endl;
             }
             else{
-                cout<<color<<" "<<kind<<" "<<id<<" reached "<<(Color)(!color)<<" headquarter with ";
+                cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" reached "<<colorstr[!color]<<" headquarter with ";
                 cout<<health<<" elements and force "<<damage<<endl;
             }
         }
@@ -383,19 +396,20 @@ void Solider::march_on(){
         if(position->ID!=0){
             position->number_of_soliders--;
             for(auto it =position->soliders.begin();it!=position->soliders.end();it++){
-                if(*it==this)position->soliders.erase(it);break;//解除绑定
+                if((*it)==this){position->soliders.erase(it);break;}//解除绑定
             }
             position=Map[position->ID-1];//进入下一个城市
             position->soliders.push_back(this);//重新绑定
             position->number_of_soliders++;
+            action=true;
             cout<<setfill('0')<<setw(3)<<TIME.first<<":";
             cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
             if(position->ID!=0){
-                cout<<color<<" "<<kind<<" "<<id<<" "<<"marched to city "<<position->ID<<" with ";
+                cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" "<<"marched to city "<<position->ID<<" with ";
                 cout<<health<<" elements and force "<<damage<<endl;
             }
             else{
-                cout<<color<<" "<<kind<<" "<<id<<" reached "<<(Color)(!color)<<" headquarter with ";
+                cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" reached "<<colorstr[!color]<<" headquarter with ";
                 cout<<health<<" elements and force "<<damage<<endl;
 
             }
@@ -407,27 +421,26 @@ void Solider::attack(Solider* object){
     int temp_health=object->health;
     int real_damage=damage;
     for(auto arm:arms){
-        if(arm->kind==sword&&arm->available)real_damage+=arm->damage;
+        if(arm->kind==sword&&arm->available){real_damage+=arm->damage;arm->used();}
     }
     if(state==killed_by_arrow){
         object->state=win;
-        position->change_wins(object->color);
         if(kind==lion)object->health+=health;
         object->wins++;
         death();
     }
     else if(object->state==killed_by_arrow){
         state=win;
-        position->change_wins(color);
         if(object->kind==lion)health+=temp_health;//生命值转移
         wins++;
         object->death();
+        earn_life();
     }
     else{
         object->attacked(real_damage);
         cout<<setfill('0')<<setw(3)<<TIME.first<<":";
         cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
-        cout<<color<<" "<<kindstr[kind]<<" "<<id<<" attacked "<<object->color<<" "<<kindstr[object->kind]<<" "<<object->id;
+        cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" attacked "<<colorstr[object->color]<<" "<<kindstr[object->kind]<<" "<<object->id;
         cout<<" in city "<<position->ID<<" with "<<health<<" elements and force "<<damage<<endl;
         if(object->health<=0){//攻击方获胜
             state=win;
@@ -436,6 +449,7 @@ void Solider::attack(Solider* object){
             if(object->kind==lion)health+=temp_health;//生命值转移
             object->death();
             wins++;
+            earn_life();
         }
         else object->fight_back(this);
     }
@@ -445,12 +459,12 @@ void Solider::fight_back(Solider* object){
     int temp_health=object->health;
     int real_damage=damage/2;
     for(auto arm:arms){
-        if(arm->kind==sword&&arm->available)real_damage+=arm->damage;
+        if(arm->kind==sword&&arm->available){real_damage+=arm->damage;arm->used();}
     }
     object->attacked(real_damage);
     cout<<setfill('0')<<setw(3)<<TIME.first<<":";
     cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
-    cout<<color<<" "<<kindstr[kind]<<" "<<id<<" fought back against "<<object->color<<" "<<kindstr[object->kind]<<" "<<object->id;
+    cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" fought back against "<<colorstr[object->color]<<" "<<kindstr[object->kind]<<" "<<object->id;
     cout<<" in city "<<position->ID<<endl;
     if(object->health<=0){//反击方获胜
         state=win;
@@ -459,21 +473,23 @@ void Solider::fight_back(Solider* object){
         if(object->kind==lion)health+=temp_health;//生命值转移
         object->death();
         wins++;
+        earn_life();
     }
     else{//平局
         state=draw;
         object->state=draw;
+        position->change_wins(3);
     }
 }
 
 
 void Solider::earn_life(){
     if(position->soliders.size()==1&&position->ID!=0&&position->ID!=N_cities+1){
-        camp->life_element+=position->life_element;//武士为所属司令部赢得生命元
-        if(state==win&&position->life_element>0){
+        camp->temp_life_elem+=position->life_element;//武士为所属司令部赢得生命元
+        if(position->life_element>0){
             cout<<setfill('0')<<setw(3)<<TIME.first<<":";
             cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
-            cout<<color<<" "<<kindstr[kind]<<" "<<id<<" earned "<<position->life_element<<" elements for his headquarter"<<endl;
+            cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" earned "<<position->life_element<<" elements for his headquarter"<<endl;
         }
         position->life_element=0;
     }
@@ -490,11 +506,19 @@ void Solider::shoot(){
                         arm->used();
                         cout<<setfill('0')<<setw(3)<<TIME.first<<":";
                         cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
-                        cout<<color<<" "<<kindstr[kind]<<" "<<id<<" shot";
+                        cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" shot";
                         if(s->health<=0){//攻击方获胜
-                            state=kill_with_arrow;
+                            //state=kill_with_arrow;
                             s->state=killed_by_arrow;
-                            cout<<" and killed "<<s->color<<" "<<kindstr[s->kind]<<" "<<s->id;
+                            cout<<" and killed "<<colorstr[s->color]<<" "<<kindstr[s->kind]<<" "<<s->id;
+                            for(auto s1:nextposition->soliders){
+                                if(s1->color==color){
+                                    s1->state=easy_win;
+                                    nextposition->change_wins(color);
+                                    if(s1->kind==wolf)s1->catch_weapon(s);
+                                    break;
+                                }//友军进入easy_win状态
+                            }
                         }
                         cout<<endl;
                     }
@@ -508,12 +532,21 @@ void Solider::shoot(){
                         arm->used();
                         cout<<setfill('0')<<setw(3)<<TIME.first<<":";
                         cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
-                        cout<<color<<" "<<kindstr[kind]<<" "<<id<<" shot";
+                        cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" shot";
                         if(s->health<=0){//攻击方获胜
-                            state=kill_with_arrow;
+                            //state=kill_with_arrow;
                             s->state=killed_by_arrow;
-                            cout<<" and killed "<<s->color<<" "<<kindstr[s->kind]<<" "<<s->id;
+                            cout<<" and killed "<<colorstr[s->color]<<" "<<kindstr[s->kind]<<" "<<s->id;
+                            for(auto s1:nextposition->soliders){
+                                if(s1->color==color){
+                                    s1->state=easy_win;
+                                    nextposition->change_wins(color);
+                                    if(s1->kind==wolf)s1->catch_weapon(s);
+                                    break;
+                                }//友军进入easy_win状态
+                            }
                         }
+                        cout<<endl;
                     }
                 }
             }
@@ -551,8 +584,10 @@ void Solider::explode(){
                 if(possible_harm>=health){//如果有被杀死的风险，触发同归于尽机制
                     cout<<setfill('0')<<setw(3)<<TIME.first<<":";
                     cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
-                    cout<<color<<" "<<kindstr[kind]<<" "<<id<<" used a bomb and killed "<<s->color<<" "<<kindstr[s->kind]<<" "<<s->id;
+                    cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" used a bomb and killed "<<colorstr[s->color]<<" "<<kindstr[s->kind]<<" "<<s->id<<endl;
                     Arm->used();
+                    state=killed_by_bomb;
+                    s->state=killed_by_bomb;
                     death();
                     s->death();
                 }
@@ -565,25 +600,25 @@ void Solider::explode(){
 void Solider::report_weapon(){
     cout<<setfill('0')<<setw(3)<<TIME.first<<":";
     cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
-    cout<<color<<" "<<kindstr[kind]<<" "<<id<<" has ";
-    if(arms.empty())cout<<" no weapon";
+    cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" has ";
+    if(arms.empty())cout<<"no weapon";
     else{
-        for(auto iter=arms.begin();iter!=arms.end();iter++){
-            Armament* arm=*iter;
+        int reported=0;//声明的武器数量
+        for(auto arm:arms){
             if(arm->kind==arrow){
-                cout<<"arrow("<<arm->damage<<")";
-                if(iter!=arms.end()-1)cout<<',';            
+                reported++;
+                cout<<"arrow("<<3-arm->usage<<")";
+                if(arms.size()>reported)cout<<',';            
             }
         }
-        for(auto iter=arms.begin();iter!=arms.end();iter++){
-            Armament* arm=*iter;
+        for(auto arm:arms){
             if(arm->kind==bomb){
+                reported++;
                 cout<<"bomb";
-                if(iter!=arms.end()-1)cout<<',';            
+                if(arms.size()>reported)cout<<',';            
             }
         }
-        for(auto iter=arms.begin();iter!=arms.end();iter++){
-            Armament* arm=*iter;
+        for(auto arm:arms){
             if(arm->kind==sword){
                 cout<<"sword("<<arm->damage<<")";          
             }
@@ -597,6 +632,7 @@ void Solider::throw_weapon(){
         if(!(*iter)->available){
             weapon_bin.push_back((*iter));//回收武器
             arms.erase(iter);
+            break;
         }
     }
 }
@@ -607,7 +643,7 @@ void Solider::throw_weapon(){
 void Dragon::yell(){
     cout<<setfill('0')<<setw(3)<<TIME.first<<":";
     cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
-    cout<<color<<" dragon "<<id<<" yelled in city "<<position->ID<<endl;
+    cout<<colorstr[color]<<" dragon "<<id<<" yelled in city "<<position->ID<<endl;
 }
 void Lion::escape(){
     if(loyalty<=0){
@@ -624,7 +660,12 @@ void Wolf::catch_weapon(Solider* object){
         for(auto arm:arms){
             if(arm->kind==oarm->kind)want=false;
         }
-        if(want)arms.push_back(oarm);
+        if(want){
+            arms.push_back(oarm);
+            for(auto iter=object->arms.begin();iter!=object->arms.end();iter++){
+                if((*iter)==oarm){object->arms.erase(iter);break;}
+            }
+        }
     }
 }
 
@@ -636,7 +677,7 @@ void Sword::used(){
     if(damage==0){
         available=false;
         for(auto iter=holder->arms.begin();iter!=holder->arms.end();iter++){
-            if((*iter)==this)holder->arms.erase(iter);
+            if((*iter)==this){holder->arms.erase(iter);break;}
         }    
     }
 }
@@ -645,14 +686,14 @@ void Arrow::used(){
     if(usage==3){
         available=false;//使用次数耗尽
         for(auto iter=holder->arms.begin();iter!=holder->arms.end();iter++){
-            if((*iter)==this)holder->arms.erase(iter);
+            if((*iter)==this){holder->arms.erase(iter);break;}
         }
     }
 }
 void Bomb::used(){
     available=false;//炸弹爆炸
     for(auto iter=holder->arms.begin();iter!=holder->arms.end();iter++){
-        if((*iter)==this)holder->arms.erase(iter);
+        if((*iter)==this){holder->arms.erase(iter);break;}
     }
 }
 
@@ -680,20 +721,26 @@ void Iceman::march_on(){//Iceman前进时特殊处理
         if(position->ID!=N_cities+1){
             position->number_of_soliders--;
             for(auto it =position->soliders.begin();it!=position->soliders.end();it++){
-                if(*it==this)position->soliders.erase(it);break;//解除绑定
+                if(*it==this){position->soliders.erase(it);break;}//解除绑定
             }
             position=Map[position->ID+1];//进入下一个城市
             position->soliders.push_back(this);//重新绑定
             position->number_of_soliders++;
             steps++;
+            action=true;
+            if(steps!=0&&steps%2==0){
+                if(health>9)health-=9;
+                else health=1;
+                damage+=20;
+            }
             cout<<setfill('0')<<setw(3)<<TIME.first<<":";
             cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
             if(position->ID!=N_cities+1){
-                cout<<color<<" "<<kind<<" "<<id<<" "<<"marched to city "<<position->ID<<" with ";
+                cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" "<<"marched to city "<<position->ID<<" with ";
                 cout<<health<<" elements and force "<<damage<<endl;
             }
             else{
-                cout<<color<<" "<<kind<<" "<<id<<" reached "<<(Color)(!color)<<" headquarter with ";
+                cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" reached "<<colorstr[!color]<<" headquarter with ";
                 cout<<health<<" elements and force "<<damage<<endl;
             }
         }
@@ -702,58 +749,58 @@ void Iceman::march_on(){//Iceman前进时特殊处理
         if(position->ID!=0){
             position->number_of_soliders--;
             for(auto it =position->soliders.begin();it!=position->soliders.end();it++){
-                if(*it==this)position->soliders.erase(it);break;//解除绑定
+                if(*it==this){position->soliders.erase(it);break;}//解除绑定
             }
             position=Map[position->ID-1];//进入下一个城市
             position->soliders.push_back(this);//重新绑定
             position->number_of_soliders++;
-            steps;
+            steps++;
+            action=true;
+            if(steps!=0&&steps%2==0){
+                if(health>9)health-=9;
+                else health=1;
+                damage+=20;
+            }
             cout<<setfill('0')<<setw(3)<<TIME.first<<":";
             cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
             if(position->ID!=0){
-                cout<<color<<" "<<kind<<" "<<id<<" "<<"marched to city "<<position->ID<<" with ";
+                cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" "<<"marched to city "<<position->ID<<" with ";
                 cout<<health<<" elements and force "<<damage<<endl;
             }
             else{
-                cout<<color<<" "<<kind<<" "<<id<<" reached "<<(Color)(!color)<<" headquarter with ";
+                cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" reached "<<colorstr[!color]<<" headquarter with ";
                 cout<<health<<" elements and force "<<damage<<endl;
 
             }
         }
     }
-    if(steps!=0&&steps%2==0){
-        if(health>9)health-=9;
-        else health=1;
-    }
-    damage+=20;
 }
 
 void Dragon::attack(Solider* object){//Dragon攻击时特殊处理
     int temp_health=object->health;
     int real_damage=damage;
     for(auto arm:arms){
-        if(arm->kind==sword&&arm->available)real_damage+=arm->damage;
+        if(arm->kind==sword&&arm->available){real_damage+=arm->damage;arm->used();}
     }
     if(state==killed_by_arrow){
         object->state=win;
-        position->change_wins(object->color);
         if(kind==lion)object->health+=health;
         object->wins++;
         death();
     }
     else if(object->state==killed_by_arrow){
         state=win;
-        position->change_wins(color);
         if(object->kind==lion)health+=temp_health;//生命值转移
         wins++;
         object->death();
+        earn_life();
         if(morale>0.8)yell();//欢呼
     }
     else{
         object->attacked(real_damage);
         cout<<setfill('0')<<setw(3)<<TIME.first<<":";
         cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
-        cout<<color<<" "<<kindstr[kind]<<" "<<id<<" attacked "<<object->color<<" "<<kindstr[object->kind]<<" "<<object->id;
+        cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" attacked "<<colorstr[object->color]<<" "<<kindstr[object->kind]<<" "<<object->id;
         cout<<" in city "<<position->ID<<" with "<<health<<" elements and force "<<damage<<endl;
         if(object->health<=0){//攻击方获胜
             state=win;
@@ -762,6 +809,7 @@ void Dragon::attack(Solider* object){//Dragon攻击时特殊处理
             if(object->kind==lion)health+=temp_health;//生命值转移
             object->death();
             wins++;
+            earn_life();
             morale+=0.2;
         }
         else {
@@ -776,24 +824,40 @@ void Lion::attack(Solider* object){
     int temp_health=object->health;
     int real_damage=damage;
     for(auto arm:arms){
-        if(arm->kind==sword&&arm->available)real_damage+=arm->damage;
+        if(arm->kind==sword&&arm->available){real_damage+=arm->damage;arm->used();}
     }
-    object->attacked(real_damage);
-    cout<<setfill('0')<<setw(3)<<TIME.first<<":";
-    cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
-    cout<<color<<" "<<kindstr[kind]<<" "<<id<<" attacked "<<object->color<<" "<<kindstr[object->kind]<<" "<<object->id;
-    cout<<" in city "<<position->ID<<" with "<<health<<" elements and force "<<damage<<endl;
-    if(object->health<=0){//攻击方获胜
+    if(state==killed_by_arrow){
+        object->state=win;
+        if(kind==lion)object->health+=health;
+        object->wins++;
+        death();
+    }
+    else if(object->state==killed_by_arrow){
         state=win;
-        object->state=loss;
-        position->change_wins(color);
         if(object->kind==lion)health+=temp_health;//生命值转移
-        object->death();
         wins++;
+        object->death();
+        earn_life();
     }
-    else {
-        loyalty-=dLoyalty;
-        object->fight_back(this);
+    else{
+        object->attacked(real_damage);
+        cout<<setfill('0')<<setw(3)<<TIME.first<<":";
+        cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
+        cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" attacked "<<colorstr[object->color]<<" "<<kindstr[object->kind]<<" "<<object->id;
+        cout<<" in city "<<position->ID<<" with "<<health<<" elements and force "<<damage<<endl;
+        if(object->health<=0){//攻击方获胜
+            state=win;
+            object->state=loss;
+            position->change_wins(color);
+            if(object->kind==lion)health+=temp_health;//生命值转移
+            object->death();
+            wins++;
+            earn_life();
+        }
+        else {
+            loyalty-=dLoyalty;
+            object->fight_back(this);
+        }
     }
 }
 
@@ -801,12 +865,12 @@ void Lion::fight_back(Solider* object){
     int temp_health=object->health;
     int real_damage=damage/2;
     for(auto arm:arms){
-        if(arm->kind==sword&&arm->available)real_damage+=arm->damage;
+        if(arm->kind==sword&&arm->available){real_damage+=arm->damage;arm->used();}
     }
     object->attacked(real_damage);
     cout<<setfill('0')<<setw(3)<<TIME.first<<":";
     cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
-    cout<<color<<" "<<kindstr[kind]<<" "<<id<<" fought back against "<<object->color<<" "<<kindstr[object->kind]<<" "<<object->id;
+    cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" fought back against "<<colorstr[object->color]<<" "<<kindstr[object->kind]<<" "<<object->id;
     cout<<" in city "<<position->ID<<endl;
     if(object->health<=0){//反击方获胜
         state=win;
@@ -815,51 +879,49 @@ void Lion::fight_back(Solider* object){
         if(object->kind==lion)health+=temp_health;//生命值转移
         object->death();
         wins++;
+        earn_life();
     }
     else{//平局
         loyalty-=dLoyalty;
         state=draw;
         object->state=draw;
+        position->change_wins(3);
     }
 }
 void Wolf::attack(Solider* object){
     int temp_health=object->health;
     int real_damage=damage;
     for(auto arm:arms){
-        if(arm->kind==sword&&arm->available)real_damage+=arm->damage;
+        if(arm->kind==sword&&arm->available){real_damage+=arm->damage;arm->used();}
     }
     if(state==killed_by_arrow){
         object->state=win;
-        position->change_wins(object->color);
         if(kind==lion)object->health+=health;
         object->wins++;
         death();
     }
     else if(object->state==killed_by_arrow){
         state=win;
-        position->change_wins(color);
         if(object->kind==lion)health+=temp_health;//生命值转移
         wins++;
         object->death();
+        earn_life();
     }
     else{
         object->attacked(real_damage);
         cout<<setfill('0')<<setw(3)<<TIME.first<<":";
         cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
-        cout<<color<<" "<<kindstr[kind]<<" "<<id<<" attacked "<<object->color<<" "<<kindstr[object->kind]<<" "<<object->id;
+        cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" attacked "<<colorstr[object->color]<<" "<<kindstr[object->kind]<<" "<<object->id;
         cout<<" in city "<<position->ID<<" with "<<health<<" elements and force "<<damage<<endl;
         if(object->health<=0){//攻击方获胜
             state=win;
             object->state=loss;
             position->change_wins(color);
             if(object->kind==lion)health+=temp_health;//生命值转移
-            if(arms.empty()){
-                for(auto arm:object->arms){
-                   arms.push_back(arm);//缴获武器
-                }
-            }
+            catch_weapon(object);//缴获武器
             object->death();
             wins++;
+            earn_life();
         }
         else object->fight_back(this);
     }
@@ -868,29 +930,27 @@ void Wolf::fight_back(Solider* object){
     int temp_health=object->health;
     int real_damage=damage/2;
     for(auto arm:arms){
-        if(arm->kind==sword&&arm->available)real_damage+=arm->damage;
+        if(arm->kind==sword&&arm->available){real_damage+=arm->damage;arm->used();}
     }
     object->attacked(real_damage);
     cout<<setfill('0')<<setw(3)<<TIME.first<<":";
     cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
-    cout<<color<<" "<<kindstr[kind]<<" "<<id<<" fought back against "<<object->color<<" "<<kindstr[object->kind]<<" "<<object->id;
+    cout<<colorstr[color]<<" "<<kindstr[kind]<<" "<<id<<" fought back against "<<colorstr[object->color]<<" "<<kindstr[object->kind]<<" "<<object->id;
     cout<<" in city "<<position->ID<<endl;
     if(object->health<=0){//反击方获胜
         state=win;
         object->state=loss;
         position->change_wins(color);
         if(object->kind==lion)health+=temp_health;//生命值转移
-        if(arms.empty()){
-            for(auto arm:object->arms){
-                arms.push_back(arm);//缴获武器
-            }
-        }
+        catch_weapon(object);//缴获武器
         object->death();
         wins++;
+        earn_life();
     }
     else{//平局
         state=draw;
         object->state=draw;
+        position->change_wins(3);
     }
 }
 
@@ -904,10 +964,10 @@ void Wolf::fight_back(Solider* object){
 void City::set_attack_order(){
     for(auto s:soliders){
         if(s->color==red){
-            if((ID%2&&flag==nothing)||(flag==redflag))s->first_hand==true;
+            if(((ID%2)&&(flag==nothing))||(flag==redflag))s->first_hand=true;
         }
         else if(s->color==blue){
-            if((!ID%2&&flag==nothing)||(flag==blueflag))s->first_hand==true;
+            if((!(ID%2)&&(flag==nothing))||(flag==blueflag))s->first_hand=true;
         }
     }
 }
@@ -937,10 +997,11 @@ void City::set_flags(){//更换旗帜
 }
 
 
-void City::change_wins(Color c){
+void City::change_wins(int c){
     last_two_wins.first=last_two_wins.second;
     if(c==red)last_two_wins.second=redflag;
-    else last_two_wins.second=blueflag;
+    else if(c==blue)last_two_wins.second=blueflag;
+    else last_two_wins.second=nothing;
 }
 
 void City::reset(){
@@ -1006,16 +1067,35 @@ void Headquarters::check_state(){
         conquered=true;
         cout<<setfill('0')<<setw(3)<<TIME.first<<":";
         cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
-        cout<<color<<" headquarter was taken"<<endl;
+        cout<<colorstr[color]<<" headquarter was taken"<<endl;
     }
 }
 
 void Headquarters::report_life(){
     cout<<setfill('0')<<setw(3)<<TIME.first<<":";
     cout<<setfill('0')<<setw(2)<<TIME.second<<" ";
-    cout<<life_element<<" elements in "<<color<<" headquarter"<<endl;
+    cout<<life_element<<" elements in "<<colorstr[color]<<" headquarter"<<endl;
 }
 
+void Headquarters::award(){
+    //奖励武士，离敌方司令部近的优先
+    if(color==red){
+        for(int i=N_cities;i>0;i--){
+            for(auto s:Map[i]->get_solider()){
+                if(s->color==red)s->catch_award();
+            }
+        }
+    }
+    else if (color==blue){
+        for(int i=1;i<=N_cities;i++){
+            for(auto s:Map[i]->get_solider()){
+                if(s->color==blue)s->catch_award();
+            }
+        }
+    }
+    life_element+=temp_life_elem;
+    temp_life_elem=0;//获得之前武士得到的城市生命元
+}
 
 ///////////////////////////////////////////////////////////////////////
 
@@ -1030,6 +1110,16 @@ void Escape(){//lion逃跑
             if(s->get_kind()==lion)s->escape();
         }
     }
+}
+
+
+void March_on(){
+    for(auto s:Map[1]->get_solider())if(s->get_color()==blue&&!s->Action())s->march_on();
+    for(int i=0;i<N_cities;i++){
+        for(auto s:Map[i]->get_solider())if(s->get_color()==red&&!s->Action())s->march_on();
+        for(auto s:Map[i+2]->get_solider())if(s->get_color()==blue&&!s->Action())s->march_on();
+    }
+    for(auto s:Map[N_cities]->get_solider())if(s->get_color()==red&&!s->Action())s->march_on();
 }
 void Generate(){//产生生命元
     for(City* city:Map){
@@ -1053,11 +1143,20 @@ void Shoot(){
             }
         }
     }
+    //清理战场
+    for(City* city:Map){
+        if(city->get_ID()!=0&&city->get_ID()!=N_cities+1){
+            for(auto s:city->get_solider()){
+                if(s->get_state()==killed_by_arrow)s->death();
+            }
+        }
+    }
 }
 
 void Explode(){
     for(City* city:Map){
         if(city->get_ID()!=0&&city->get_ID()!=N_cities+1){
+            city->set_attack_order();//设置攻击顺序
             for(auto s:city->get_solider()){
                 s->explode();
             }
@@ -1066,10 +1165,19 @@ void Explode(){
 
 }
 
+
+
 void Attack(){
     for(City* city:Map){
         if(city->get_ID()!=0&&city->get_ID()!=N_cities+1){
-            city->set_attack_order();//设置攻击顺序
+            for(auto s:city->get_solider()){
+                if(s->get_state()==easy_win)s->earn_life();//easy_win武士获得城市生命元
+            }
+            city->set_flags();
+        }
+    }
+    for(City* city:Map){
+        if(city->get_ID()!=0&&city->get_ID()!=N_cities+1){
             for(auto s:city->get_solider()){
                 if(s->isfirsthand()){
                     for(auto s1:city->get_solider()){
@@ -1082,22 +1190,35 @@ void Attack(){
 }
 
 void Report_weapon(){
-    for(City* city:Map){
-        if(city->get_ID()!=0&&city->get_ID()!=N_cities+1){
-            for(auto s:city->get_solider()){
-                if(s->get_color()==red)s->report_weapon();
-            }
+    for(City* city:Map){ 
+        for(auto s:city->get_solider()){
+            if(s->get_color()==red)s->report_weapon();
         }
     }
     for(City* city:Map){
+        for(auto s:city->get_solider()){
+            if(s->get_color()==blue)s->report_weapon();
+        }
+    }
+}
+
+void Reset_solider(){
+    for(City* city:Map){
         if(city->get_ID()!=0&&city->get_ID()!=N_cities+1){
             for(auto s:city->get_solider()){
-                if(s->get_color()==blue)s->report_weapon();
+                s->reset();
             }
         }
     }
 }
 
+void RESET(Headquarters* RED,Headquarters* BLUE){
+    delete RED;
+    delete BLUE;
+    for_each(Map.begin()+1,Map.end()-1,deleter());//清理堆内存
+    for_each(weapon_bin.begin(),weapon_bin.end(),deleter());//清理堆内存
+    Map.clear();
+}
 
 void initialize(){
     //初始化函数
@@ -1111,13 +1232,13 @@ void initialize(){
 
 void start(int T){
     ///////////////////初始化地图///////////////////
-    Headquarters RED(red,LIFE_ELEMENT,0);
-    Headquarters BLUE(blue,LIFE_ELEMENT,N_cities+1);
-    Map.push_back(&RED);
+    Headquarters* RED=new Headquarters(red,LIFE_ELEMENT,0);
+    Headquarters* BLUE=new Headquarters(blue,LIFE_ELEMENT,N_cities+1);
+    Map.push_back(RED);
     for(int i=1;i<=N_cities;i++){
         Map.push_back(new City(i));
     }
-    Map.push_back(&BLUE);
+    Map.push_back(BLUE);
 
 
     /////////////运行时间线（核心进程）///////////////
@@ -1128,32 +1249,36 @@ void start(int T){
             TIME.first=hour;
             TIME.second=min;//更新时间
             if(min==0){//司令部创造武士
-                RED.create_next();
-                BLUE.create_next();
+                RED->create_next();
+                BLUE->create_next();
             }
             else if(min==5)Escape();
             else if(min==10){//武士进军
-                RED.march_next();
-                BLUE.march_next();
-                RED.check_state();
-                BLUE.check_state();
-                if(RED.isconquered()||BLUE.isconquered())GAMEOVER=true;
+                March_on();
+                RED->check_state();
+                BLUE->check_state();
+                if(RED->isconquered()||BLUE->isconquered())GAMEOVER=true;
             }
             else if(min==20)Generate();
             else if(min==30)Earn_elem();
             else if(min==35)Shoot();
             else if(min==38)Explode();
-            else if(min==40)Attack();
+            else if(min==40){
+                Attack();
+                RED->award();
+                BLUE->award();
+                Reset_solider();//重置士兵状态
+            }
             else if(min==50){
-                RED.report_life();
-                BLUE.report_life();
+                RED->report_life();
+                BLUE->report_life();
             }
             else if(min==55)Report_weapon();
             if(GAMEOVER)break;
         }
         if(GAMEOVER)break;
     }
-    for_each(Map.begin(),Map.end(),deleter());//清理内存
+    RESET(RED,BLUE);//全局重置
 }
 
 ///////////////////////////////////////////////////////////////////////////
