@@ -1,6 +1,7 @@
 #include<bits/stdc++.h>
 using namespace std;
 
+
 //构造deleter用于回收内存
 struct deleter {
 	template<typename T>
