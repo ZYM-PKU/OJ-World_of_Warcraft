@@ -1,4 +1,5 @@
 #include<bits/stdc++.h>
+//基于MinGW的预编译头文件
 using namespace std;
 
 
