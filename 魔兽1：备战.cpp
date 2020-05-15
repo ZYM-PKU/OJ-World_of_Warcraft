@@ -1,7 +1,6 @@
 #include<bits/stdc++.h>
 using namespace std;
 
-
 struct deleter {
 	template<typename T>
 	void operator()(const T* ptr) const { delete ptr; }
