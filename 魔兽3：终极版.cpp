@@ -1,5 +1,4 @@
 #include<bits/stdc++.h>
-//基于MinGW的预编译头文件
 using namespace std;
 
 
@@ -13,6 +12,7 @@ struct deleter {
 };
 
 ////////////////////////////////全局变量////////////////////////////////
+
 //声明
 class City;
 class Armament;
@@ -31,9 +31,11 @@ pair<int, int>TIME;//记录全局时间（小时，分钟）
 int minute[10] = { 0,5,10,20,30,35,38,40,50,55 };//关键时间点
 vector<Armament*>weapon_bin;//回收无效武器
 
+
 Kind create_chain[2][5] = { {iceman,lion,wolf,ninja,dragon},{lion,dragon,ninja,iceman,wolf} };//制造顺序
 int op_create_chain[2][5] = { {4,3,0,1,2},{1,2,3,0,4} };//顺序逆映射
 /////////////////////////////////
+
 
 
 ///////用于输出的字符映射////////
@@ -41,6 +43,7 @@ string colorstr[2] = { "red","blue" };
 string kindstr[5] = { "dragon","ninja","iceman","lion","wolf" };
 string armstr[3] = { "sword","bomb","arrow" };
 ////////////////////////////////
+
 
 
 ///////////初始化变量/////////////
@@ -117,7 +120,9 @@ public:
 
 class City {
 public:
-	City(int _id, int l = 0) :ID(_id), life_element(l), number_of_soliders(0), flag(nothing), last_two_wins(nothing, nothing), temp_life_elem(0) {}
+	City(int _id, int l = 0) :ID(_id), life_element(l), number_of_soliders(0), flag(nothing), 
+	last_two_wins(nothing, nothing), temp_life_elem(0) {}
+
 	int get_ID()const { return ID; }
 	int get_life()const { return life_element; }
 	void generate_elem() { life_element += 10; }//产生生命元
@@ -150,7 +155,8 @@ protected:
 class Headquarters :public City {
 	//司令部类
 public:
-	Headquarters(Color col, int l, int _id) :City(_id, l), color(col), producing(true), number_of_soliders_ever(0), conquered(false) {
+	Headquarters(Color col, int l, int _id) :City(_id, l), color(col), producing(true),
+	number_of_soliders_ever(0), conquered(false) {
 		memset(countmap, 0, sizeof(countmap));
 		if (life_element < create_chain[color][0])producing = false;
 	}
@@ -210,9 +216,6 @@ public:
 	void catch_award();//获得司令部奖励
 	void catch_elem();//取得城市中的生命元
 	void attacked(int d) { health -= d; };//受击
-	virtual void march_on();//前进(利用多态处理iceman的特殊情况)
-	virtual void attack(Solider* object);//攻击(利用多态处理dragon的攻击)
-	virtual void fight_back(Solider* object);//反击(利用多态处理ninja的反击)
 	void reset();//回合结束，状态重置
 	void earn_life();//获取城市中的生命元
 	void shoot();//射箭
@@ -221,6 +224,9 @@ public:
 	virtual void escape() {}
 	virtual void yell(bool easy = false) {}
 	virtual void catch_weapon(Solider* object) {}//缴获武器
+	virtual void march_on();//前进(利用多态处理行军)
+	virtual void attack(Solider* object);//攻击(利用多态处理攻击)
+	virtual void fight_back(Solider* object);//反击(利用多态处理反击)
 
     //开放信息许可
 	friend class City;
@@ -238,7 +244,10 @@ public:
 	}
 protected:
 	//受保护的构造函数，无法直接调用，防止基类对象实例化
-	Solider(int _id, int _health, int _damage, Headquarters* h) :id(_id), health(_health), damage(_damage), camp(h), wins(0), state(none), first_hand(false), color(h->color), action(false) { position = camp; }
+	Solider(int _id, int _health, int _damage, Headquarters* h) :id(_id),
+	health(_health), damage(_damage), camp(h), wins(0), state(none), 
+	first_hand(false), color(h->color), action(false) { position = camp; }
+
 	Solider(const Solider& s) :id(s.id), health(s.health), damage(s.damage) {}
 	int id;//编号
 	int wins;//胜利次数
